@@ -1,0 +1,118 @@
+version: '3'
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: db
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - MYSQL_DATABASE=wplsof_therectifying
+    volumes:
+      - dbdata:/var/lib/mysql
+    command: '--default-authentication-plugin=mysql_native_password'
+    networks:
+      - wpsite
+
+  phpmyadmin:
+    depends_on:
+      - db
+    image: phpmyadmin/phpmyadmin
+    restart: always
+    ports:
+      - '8080:80'
+    environment:
+      PMA_HOST: db
+      MYSQL_ROOT_PASSWORD: lGhXOMV5vr9dG1P
+    networks:
+      - wpsite
+  
+  therectifying: # Wordpress site 1
+    depends_on:
+      - db
+    container_name: therectifying
+    image: wordpress:latest
+    ports:
+      - '8000:80' # This site will be accessible on localhost:8000
+    restart: always
+    volumes:
+      - wordpress:/var/www/html/therectifying
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_NAME: wplsof_therectifying
+      WORDPRESS_DB_USER: wp_user_rectifying
+      WORDPRESS_DB_PASSWORD: 5Vt47QhCLu6OhJD
+    networks:
+      - wpsite
+
+  anamcollections: # Wordpress site 2
+    depends_on:
+      - db
+    container_name: anamcollections
+    image: wordpress:latest
+    ports:
+      - '8001:80' # This site will be accessible on localhost:8001
+    restart: always
+    volumes:
+      - wordpress:/var/www/html/anamcollection
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_NAME: wplsof_anamcollections
+      WORDPRESS_DB_USER: wp_user_anamcollection
+      WORDPRESS_DB_PASSWORD: 5Vt47QhCLu6OhJF
+    networks:
+      - wpsite
+  
+  webserver:
+    depends_on:
+      - therectifying
+      - anamcollections
+    image: nginx:1.15.12-alpine
+    container_name: webserver
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx-conf:/etc/nginx/conf.d
+      - certbot-etc:/etc/letsencrypt
+      - wordpress:/var/www/html/therectifying
+      - wordpress:/var/www/html/anamcollection
+    networks:
+      - wpsite
+
+  certbot:
+    depends_on:
+      - webserver
+    image: certbot/certbot
+    container_name: certbot
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-var:/var/lib/letsencrypt
+      - wordpress:/var/www/html/therectifying
+      - wordpress:/var/www/html/anamcollection
+    command: certonly --webroot --webroot-path=/var/www/html/therectifying --email admin@therectifying.com --agree-tos --no-eff-email --force-renewal -d therectifying.com -d www.therectifying.com 
+                      --webroot-path=/var/www/html/anamcollection --email admin@anamcollctions.com --agree-tos --no-eff-email --force-renewal -d anamcollctions.com  -d www.anamcollctions.com --non-interactive
+  
+  memcached:
+    image: bitnami/memcached:latest
+    container_name: memcached
+    environment:
+      - MEMCACHED_CACHE_SIZE=128
+      - MEMCACHED_MAX_CONNECTIONS=2000
+      - MEMCACHED_THREADS=4
+      - MEMCACHED_MAX_ITEM_SIZE=8388608
+      - MEMCACHED_USERNAME=cache_wp_user
+      - MEMCACHED_PASSWORD=5Vt47QhCLu6OhJG
+    networks:
+      - wpsite
+
+volumes:
+  certbot-etc:
+  certbot-var:
+  dbdata:
+  wordpress:
+
+networks:
+  wpsite:
+   driver: bridge
